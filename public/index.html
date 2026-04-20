@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Request a Website</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f0f2f5;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      background: white;
+      border-radius: 16px;
+      padding: 32px 28px;
+      width: 100%;
+      max-width: 420px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+    }
+    h1 {
+      font-size: 22px;
+      font-weight: 700;
+      color: #1a1a1a;
+      margin-bottom: 6px;
+    }
+    p.subtitle {
+      font-size: 14px;
+      color: #666;
+      margin-bottom: 28px;
+    }
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: #444;
+      margin-bottom: 6px;
+    }
+    input, textarea {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1.5px solid #e0e0e0;
+      border-radius: 10px;
+      font-size: 16px;
+      color: #1a1a1a;
+      outline: none;
+      transition: border-color 0.2s;
+      margin-bottom: 18px;
+    }
+    input:focus, textarea:focus { border-color: #4f6ef7; }
+    textarea { resize: none; height: 90px; font-family: inherit; }
+    button {
+      width: 100%;
+      padding: 14px;
+      background: #4f6ef7;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button:hover { background: #3a57e8; }
+    button:disabled { background: #a0a0a0; cursor: not-allowed; }
+    .message {
+      margin-top: 18px;
+      padding: 12px 14px;
+      border-radius: 10px;
+      font-size: 14px;
+      display: none;
+    }
+    .message.success { background: #e8f5e9; color: #2e7d32; }
+    .message.error { background: #fdecea; color: #c62828; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Request a Website</h1>
+    <p class="subtitle">Submit a site you'd like access to. Dad will get notified to approve it.</p>
+
+    <form id="form">
+      <label for="url">Website</label>
+      <input type="text" id="url" name="url" placeholder="e.g. wikipedia.org" autocapitalize="none" autocorrect="off" required>
+
+      <label for="reason">Reason <span style="font-weight:400;color:#999">(optional)</span></label>
+      <textarea id="reason" name="reason" placeholder="Why do you need this site?"></textarea>
+
+      <button type="submit" id="btn">Send Request</button>
+    </form>
+
+    <div class="message" id="msg"></div>
+  </div>
+
+  <script>
+    document.getElementById('form').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const btn = document.getElementById('btn');
+      const msg = document.getElementById('msg');
+      btn.disabled = true;
+      btn.textContent = 'Sending...';
+      msg.style.display = 'none';
+
+      const url = document.getElementById('url').value.trim();
+      const reason = document.getElementById('reason').value.trim();
+
+      try {
+        const res = await fetch('/api/submit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url, reason })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          msg.className = 'message success';
+          msg.textContent = 'Request sent! Dad will review it.';
+          document.getElementById('form').reset();
+        } else {
+          msg.className = 'message error';
+          msg.textContent = data.error || 'Something went wrong. Try again.';
+        }
+      } catch {
+        msg.className = 'message error';
+        msg.textContent = 'Network error. Try again.';
+        btn.disabled = false;
+        btn.textContent = 'Send Request';
+      }
+      msg.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Send Request';
+    });
+  </script>
+</body>
+</html>
