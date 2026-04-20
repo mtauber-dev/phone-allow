@@ -12,11 +12,11 @@ from googleapiclient.discovery import build
 
 app = Flask(__name__, static_folder="../public")
 
-TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
-TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
-APPROVE_SECRET = os.environ["APPROVE_SECRET"]
-SA_KEY_JSON = os.environ["SA_KEY_JSON"]
-APP_URL = os.environ["APP_URL"].rstrip("/")
+def _env(key: str) -> str:
+    val = os.environ.get(key)
+    if not val:
+        raise RuntimeError(f"Missing environment variable: {key}")
+    return val
 
 ENTERPRISE_ID = "enterprises/LC01pmydxo"
 POLICY_NAME = f"{ENTERPRISE_ID}/policies/private-device"
@@ -29,7 +29,7 @@ AMAPI_SCOPES = ["https://www.googleapis.com/auth/androidmanagement"]
 # ---------------------------------------------------------------------------
 
 def make_sig(url: str) -> str:
-    return hmac.new(APPROVE_SECRET.encode(), url.encode(), hashlib.sha256).hexdigest()
+    return hmac.new(_env("APPROVE_SECRET").encode(), url.encode(), hashlib.sha256).hexdigest()
 
 
 def verify_sig(url: str, sig: str) -> bool:
@@ -38,13 +38,13 @@ def verify_sig(url: str, sig: str) -> bool:
 
 def send_telegram(text: str, reply_markup: dict) -> None:
     payload = json.dumps({
-        "chat_id": TELEGRAM_CHAT_ID,
+        "chat_id": _env("TELEGRAM_CHAT_ID"),
         "text": text,
         "parse_mode": "HTML",
         "reply_markup": reply_markup
     }).encode()
     req = urllib.request.Request(
-        f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+        f"https://api.telegram.org/bot{_env('TELEGRAM_BOT_TOKEN')}/sendMessage",
         data=payload,
         headers={"Content-Type": "application/json"}
     )
@@ -52,7 +52,7 @@ def send_telegram(text: str, reply_markup: dict) -> None:
 
 
 def get_amapi_service():
-    sa_info = json.loads(SA_KEY_JSON)
+    sa_info = json.loads(_env("SA_KEY_JSON"))
     creds = service_account.Credentials.from_service_account_info(sa_info, scopes=AMAPI_SCOPES)
     return build("androidmanagement", "v1", credentials=creds, cache_discovery=False)
 
@@ -104,8 +104,9 @@ def submit():
         return jsonify({"error": "URL is required"}), 400
 
     sig = make_sig(url)
-    approve_url = f"{APP_URL}/api/approve?url={urllib.parse.quote(url)}&sig={sig}"
-    deny_url = f"{APP_URL}/api/deny?url={urllib.parse.quote(url)}&sig={sig}"
+    app_url = _env("APP_URL").rstrip("/")
+    approve_url = f"{app_url}/api/approve?url={urllib.parse.quote(url)}&sig={sig}"
+    deny_url = f"{app_url}/api/deny?url={urllib.parse.quote(url)}&sig={sig}"
 
     reason_line = f"\n<i>Reason: {reason}</i>" if reason else ""
     text = f"🔗 <b>Website Request</b>\n\n<b>{url}</b>{reason_line}\n\nTap Approve to allow Chrome access."
