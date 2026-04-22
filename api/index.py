@@ -57,6 +57,28 @@ def get_amapi_service():
     return build("androidmanagement", "v1", credentials=creds, cache_discovery=False)
 
 
+def propagate_url_policy(policy: dict) -> None:
+    """Copy Chrome's URLBlocklist/URLAllowlist to every non-blocked, non-disabled app."""
+    apps = policy.get("applications", [])
+    chrome = next((a for a in apps if a.get("packageName") == "com.android.chrome"), None)
+    if not chrome:
+        return
+    chrome_mc = chrome.get("managedConfiguration", {})
+    blocklist = list(chrome_mc.get("URLBlocklist", []))
+    allowlist = list(chrome_mc.get("URLAllowlist", []))
+
+    for app in apps:
+        if app.get("packageName") == "com.android.chrome":
+            continue
+        if app.get("installType") == "BLOCKED":
+            continue
+        if app.get("disabled"):
+            continue
+        mc = app.setdefault("managedConfiguration", {})
+        mc["URLBlocklist"] = blocklist
+        mc["URLAllowlist"] = allowlist
+
+
 def add_url_to_allowlist(url: str) -> bool:
     """Returns True if added, False if already present."""
     service = get_amapi_service()
@@ -77,6 +99,7 @@ def add_url_to_allowlist(url: str) -> bool:
 
     allowlist.append(url)
     policy["applications"] = apps
+    propagate_url_policy(policy)
     service.enterprises().policies().patch(name=POLICY_NAME, body=policy).execute()
     service.enterprises().devices().patch(
         name=DEVICE_NAME, updateMask="policyName",
