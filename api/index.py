@@ -98,7 +98,7 @@ def strip_managed_config(policy: dict, package_name: str) -> None:
             break
 
 
-def safe_patch_policy(service, policy: dict, max_retries: int = 20):
+def safe_patch_policy(service, policy: dict, max_retries: int = 300):
     """Patch policy, removing managedConfiguration from unsupported apps and retrying."""
     for _ in range(max_retries):
         try:
