@@ -9,12 +9,8 @@ import urllib.request
 from flask import Flask, request, jsonify
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
 
 app = Flask(__name__)
-
-# Cache of apps that AMAPI rejects managedConfiguration for — persists for lifetime of function instance
-_url_policy_unsupported_apps: set[str] = set()
 
 def _env(key: str) -> str:
     val = os.environ.get(key)
@@ -61,60 +57,6 @@ def get_amapi_service():
     return build("androidmanagement", "v1", credentials=creds, cache_discovery=False)
 
 
-def propagate_url_policy(policy: dict) -> None:
-    """Copy Chrome's URLBlocklist/URLAllowlist to every non-blocked, non-disabled app.
-    Skips apps known to not support managedConfiguration."""
-    apps = policy.get("applications", [])
-    chrome = next((a for a in apps if a.get("packageName") == "com.android.chrome"), None)
-    if not chrome:
-        return
-    chrome_mc = chrome.get("managedConfiguration", {})
-    blocklist = list(chrome_mc.get("URLBlocklist", []))
-    allowlist = list(chrome_mc.get("URLAllowlist", []))
-
-    for app_entry in apps:
-        pkg = app_entry.get("packageName", "")
-        if pkg == "com.android.chrome":
-            continue
-        if pkg in _url_policy_unsupported_apps:
-            continue
-        if app_entry.get("installType") == "BLOCKED":
-            continue
-        if app_entry.get("disabled"):
-            continue
-        mc = app_entry.setdefault("managedConfiguration", {})
-        mc["URLBlocklist"] = blocklist
-        mc["URLAllowlist"] = allowlist
-
-
-def strip_managed_config(policy: dict, package_name: str) -> None:
-    for app_entry in policy.get("applications", []):
-        if app_entry.get("packageName") == package_name:
-            mc = app_entry.get("managedConfiguration", {})
-            mc.pop("URLBlocklist", None)
-            mc.pop("URLAllowlist", None)
-            if not mc:
-                app_entry.pop("managedConfiguration", None)
-            break
-
-
-def safe_patch_policy(service, policy: dict, max_retries: int = 300):
-    """Patch policy, removing managedConfiguration from unsupported apps and retrying."""
-    for _ in range(max_retries):
-        try:
-            return service.enterprises().policies().patch(name=POLICY_NAME, body=policy).execute()
-        except HttpError as e:
-            text = str(e)
-            m = re.search(r"not supported for (\S+?)[\"'\)\.]", text + '"')
-            if m:
-                pkg = m.group(1).rstrip(".,;:")
-                _url_policy_unsupported_apps.add(pkg)
-                strip_managed_config(policy, pkg)
-                continue
-            raise
-    raise RuntimeError("Too many retries stripping unsupported apps")
-
-
 def add_url_to_allowlist(url: str) -> bool:
     """Returns True if added, False if already present."""
     service = get_amapi_service()
@@ -135,8 +77,7 @@ def add_url_to_allowlist(url: str) -> bool:
 
     allowlist.append(url)
     policy["applications"] = apps
-    propagate_url_policy(policy)
-    safe_patch_policy(service, policy)
+    service.enterprises().policies().patch(name=POLICY_NAME, body=policy).execute()
     service.enterprises().devices().patch(
         name=DEVICE_NAME, updateMask="policyName",
         body={"policyName": POLICY_NAME}
